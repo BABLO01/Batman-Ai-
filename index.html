@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batman Comic Reader - Muhammad Usman</title>
+    <style>
+        :root {
+            --accent: #e6b800;
+            --bg: #121212;
+            --panel: #1e1e1e;
+            --text: #ffffff;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #top-bar {
+            background: var(--panel);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .btn {
+            background: var(--accent);
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            color: black;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .btn:hover { background: #ffcc00; transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { background: #444; color: #888; cursor: not-allowed; }
+        
+        #main-container {
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        #viewer {
+            flex-grow: 1;
+            overflow: auto;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 20px;
+            background: #000;
+        }
+        
+        #comic-img {
+            max-width: 100%;
+            height: auto;
+            box-shadow: 0 0 30px rgba(0,0,0,0.9);
+            transition: transform 0.2s ease-out;
+            transform-origin: top center;
+        }
+        
+        /* Chat Sidebar */
+        #chat-sidebar {
+            width: 350px;
+            background: var(--panel);
+            border-left: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s ease;
+        }
+        #chat-header {
+            padding: 15px;
+            background: #252525;
+            font-weight: bold;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+        }
+        #chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .msg {
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 85%;
+            font-size: 0.95em;
+            line-height: 1.4;
+        }
+        .msg.user { background: var(--accent); color: black; align-self: flex-end; }
+        .msg.ai { background: #333; color: white; align-self: flex-start; border: 1px solid #444; }
+        
+        #chat-input-area {
+            padding: 15px;
+            border-top: 1px solid #333;
+            display: flex;
+            gap: 8px;
+        }
+        #chat-input {
+            flex-grow: 1;
+            background: #121212;
+            border: 1px solid #444;
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            outline: none;
+        }
+        
+        /* Floating Overlay for TTS */
+        #text-overlay {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.85);
+            padding: 15px 25px;
+            border-radius: 30px;
+            display: none;
+            max-width: 70%;
+            text-align: center;
+            border: 1px solid var(--accent);
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        #page-info { font-weight: bold; color: var(--accent); min-width: 80px; text-align: center; }
+
+        @media (max-width: 800px) {
+            #chat-sidebar {
+                position: absolute;
+                right: 0;
+                height: 100%;
+                transform: translateX(100%);
+                z-index: 200;
+            }
+            #chat-sidebar.open { transform: translateX(0); }
+        }
+    </style>
+</head>
+<body>
+
+<div id="top-bar">
+    <div class="controls">
+        <button class="btn" id="prev-btn" onclick="changePage(-1)">◀ Prev</button>
+        <div id="page-info">1 / 28</div>
+        <button class="btn" id="next-btn" onclick="changePage(1)">Next ▶</button>
+    </div>
+    
+    <div class="controls">
+        <button class="btn" onclick="zoom(0.1)">🔍+</button>
+        <button class="btn" onclick="zoom(-0.1)">🔍-</button>
+        <button class="btn" id="tts-btn" onclick="toggleTTS()">🔊 Read</button>
+        <select id="speed-control" style="background:#333; color:white; border:none; border-radius:4px; padding:5px;">
+            <option value="0.8">0.8x</option>
+            <option value="1.0" selected>1.0x</option>
+            <option value="1.2">1.2x</option>
+            <option value="1.5">1.5x</option>
+        </select>
+    </div>
+
+    <button class="btn" onclick="toggleChat()">💬 AI Chat</button>
+</div>
+
+<div id="main-container">
+    <div id="viewer">
+        <img id="comic-img" src="custom_cover.jpg" alt="Comic Page">
+    </div>
+
+    <div id="chat-sidebar">
+        <div id="chat-header">
+            <span>Batman AI Trainer</span>
+            <button onclick="toggleChat()" style="background:none; border:none; color:white; cursor:pointer;">✕</button>
+        </div>
+        <div id="chat-messages">
+            <div class="msg ai">Hello Muhammad Usman! I am your Batman AI. Ask me anything about this page or the story. (Urdu/English supported)</div>
+        </div>
+        <div id="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Ask something..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <button class="btn" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+    
+    <div id="text-overlay"></div>
+</div>
+
+<script>
+    let ocrData = {};
+    let currentPage = 0;
+    let currentZoom = 1.0;
+    let isSpeaking = false;
+    let synth = window.speechSynthesis;
+    let utterance = null;
+
+    const pages = ["custom_cover.jpg"];
+    for(let i=2; i<=28; i++) {
+        let num = i.toString().padStart(3, '0');
+        pages.push(`Batman 001 (2025) ${num}.jpg`);
+    }
+
+    async function loadOCR() {
+        try {
+            const response = await fetch('ocr_data.json');
+            ocrData = await response.json();
+            ocrData["custom_cover.jpg"] = "Batman: Muhammad Usman. This is the cover page of the Batman comic.";
+        } catch (e) { console.error("OCR Load Error", e); }
+    }
+
+    function changePage(delta) {
+        stopTTS();
+        currentPage = Math.max(0, Math.min(pages.length - 1, currentPage + delta));
+        updateDisplay();
+    }
+
+    function updateDisplay() {
+        const img = document.getElementById('comic-img');
+        img.src = encodeURIComponent(pages[currentPage]);
+        document.getElementById('page-info').innerText = `${currentPage + 1} / ${pages.length}`;
+        document.getElementById('prev-btn').disabled = (currentPage === 0);
+        document.getElementById('next-btn').disabled = (currentPage === pages.length - 1);
+        resetZoom();
+        document.getElementById('viewer').scrollTo(0,0);
+    }
+
+    function zoom(delta) {
+        currentZoom = Math.max(0.5, Math.min(3.0, currentZoom + delta));
+        document.getElementById('comic-img').style.transform = `scale(${currentZoom})`;
+    }
+
+    function resetZoom() {
+        currentZoom = 1.0;
+        document.getElementById('comic-img').style.transform = `scale(${currentZoom})`;
+    }
+
+    function toggleTTS() {
+        if (isSpeaking) stopTTS(); else startTTS();
+    }
+
+    function startTTS() {
+        const text = ocrData[pages[currentPage]];
+        if (!text || text.trim() === "") return;
+
+        stopTTS();
+        utterance = new SpeechSynthesisUtterance(text);
+        
+        const voices = synth.getVoices();
+        let selectedVoice = voices.find(v => v.name.includes('Female') || v.name.includes('Google UK English Female') || v.name.includes('Zira'));
+        if (selectedVoice) utterance.voice = selectedVoice;
+        
+        utterance.rate = parseFloat(document.getElementById('speed-control').value);
+        
+        utterance.onstart = () => {
+            isSpeaking = true;
+            document.getElementById('tts-btn').innerText = "⏹ Stop";
+            document.getElementById('text-overlay').innerText = text;
+            document.getElementById('text-overlay').style.display = "block";
+        };
+        
+        utterance.onend = () => stopTTS();
+        synth.speak(utterance);
+    }
+
+    function stopTTS() {
+        synth.cancel();
+        isSpeaking = false;
+        document.getElementById('tts-btn').innerText = "🔊 Read";
+        document.getElementById('text-overlay').style.display = "none";
+    }
+
+    function toggleChat() {
+        document.getElementById('chat-sidebar').classList.toggle('open');
+    }
+
+    function sendMessage() {
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        if (!text) return;
+
+        addMessage(text, 'user');
+        input.value = '';
+
+        setTimeout(() => {
+            const pageText = ocrData[pages[currentPage]] || "";
+            let response = "";
+            const isUrdu = /[\u0600-\u06FF]/.test(text);
+
+            if (text.toLowerCase().includes("who") || text.includes("کون")) {
+                response = isUrdu ? "اس کہانی میں بیٹ مین (بروس وین) مرکزی کردار ہے۔" : "Batman (Bruce Wayne) is the main character in this story.";
+            } else if (text.toLowerCase().includes("page") || text.includes("صفحہ")) {
+                response = isUrdu ? `آپ ابھی صفحہ ${currentPage + 1} پر ہیں۔ اس صفحے پر لکھا ہے: ${pageText.substring(0, 50)}...` : `You are on page ${currentPage + 1}. The text here says: ${pageText.substring(0, 50)}...`;
+            } else {
+                response = isUrdu ? "میں آپ کی بات سمجھ گیا ہوں۔ میں اس کامک کے بارے میں آپ کی مدد کر سکتا ہوں۔" : "I understand. I can help you with questions about this Batman comic.";
+            }
+            addMessage(response, 'ai');
+        }, 600);
+    }
+
+    function addMessage(text, sender) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `msg ${sender}`;
+        msgDiv.innerText = text;
+        const container = document.getElementById('chat-messages');
+        container.appendChild(msgDiv);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    loadOCR();
+    updateDisplay();
+    window.speechSynthesis.onvoiceschanged = () => synth.getVoices();
+</script>
+</body>
+</html>
